@@ -1,0 +1,20 @@
+#define PI 3.14
+#define MCMatchCone 0.15
+#define ElectronVetoCone 0.02
+#define GeneralCone 0.3
+#define AK4Cone 0.4
+#define R9EBCut 0.5
+#define R9EECut 0.8
+#define PhoLepdR 0.8
+#define ZMass 91.188
+#define ZMassWindow 10.0 
+
+#define ElePID  11
+#define NvEPID  12
+#define MuPID   13
+#define NvMPID  14
+#define TauPID  15
+#define NvTPID  16
+#define WPID    24
+#define CharginoPID 1000024
+#define NeutralinoPID 1000022 

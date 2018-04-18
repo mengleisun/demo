@@ -1,0 +1,57 @@
+double etaRates[]={0.0677906,0.0441322,0.0368513,0.036875,0.03423,0.0355761,0.0342344,0.0326553,0.0339718,0.0319107,0.0316897,0.0297797,0.028664,0.0369137,0.0355972,0.0335027,0.0299101,0.0273941,0.0269791,0.0259944,0.0216911,0.0225867,0.0354067,0.0264925,0.0217097,0.0227903,0.0237145,0.0274444,0.0336612};
+
+Double_t fakerate_func(Double_t *x, Double_t *par)
+{
+	double weight_pt(0.02);
+	double weight_nvtx(0.02);
+	double weight_eta(0.02);
+
+	double normfactor = par[0];
+  double slope = par[1];
+  double constant = par[2];
+  double index = par[3];
+  double coeff = 1.0; 
+	double vtx_constant = par[5];
+	double vtx_slope = par[6];
+
+  double pt = TMath::Max(x[0],0.000001);
+	double nvtx=x[1];
+	double eta= x[2];
+
+	//if(pt >200)pt= 200.0;
+
+	double arg = 0;
+	arg = slope*pt + constant; 
+	double fitval = pow(arg, index)*coeff; 
+	weight_pt = fitval;
+
+	weight_nvtx = vtx_constant + vtx_slope*nvtx;
+
+
+	for(int ieta(0); ieta < 29; ieta++)
+		if(eta > ieta*0.05 && eta < (ieta+1)*0.05)weight_eta = etaRates[ieta];
+	if(eta <= 0 || eta > 1.4)weight_eta = 0.025;
+
+	double totalfakerate= normfactor*weight_pt*weight_nvtx*weight_eta;
+	//return totalfakerate/(1-totalfakerate);
+	return totalfakerate;
+
+//1275 1565
+}
+
+Double_t jetfake_func(Double_t *x, Double_t *par)
+{
+	double pt_low = x[0] - 1.0/2.0;
+	double pt_high = x[0]+ 1.0/2.0;
+
+	double c1 = par[0];
+	double c2 = par[1];
+	double lamda1 = par[2];
+	double lamda2 = par[3];
+
+	double jetfakes_lowedge = c1*exp(lamda1*pt_low)/lamda1 + c2*exp(lamda2*pt_low)/lamda2;
+	double jetfakes_highedge =  c1*exp(lamda1*pt_high)/lamda1 + c2*exp(lamda2*pt_high)/lamda2;
+	//return (jetfakes_highedge + jetfakes_lowedge)/2.0*REBINSIZE;
+	return (jetfakes_highedge - jetfakes_lowedge);
+}
+

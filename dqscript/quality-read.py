@@ -8,7 +8,7 @@ from datetime import datetime
 import json
 import subprocess
 
-period_name = "KNM1"
+period_name = "KNM2"
 
 alert_level = {
 	'GREEN':1,
@@ -18,9 +18,9 @@ alert_level = {
 pattern_parameter = {
 	'Katrin Number':{'pattern':['katrin number','katrin #'],'path':['QualityCriteria/KatrinNumber','SlowControlReadout/KatrinNumber']},
 	'Description':{'pattern':['description','describe'],'path':['QualityCriteria/Description']},
-	'CriteriaName':{'pattern':['criteria'],'path':['CriteriaName']},
-	'IncludeRun':{'pattern':['run include'],'path':['IncludeRun']},
-	'ExcludeRun':{'pattern':['run exclude'],'path':['ExcludeRun']},
+	'CriteriaName':{'pattern':['criteria'],'path':['QualityCriteria/CriteriaName']},
+	'IncludeRun':{'pattern':['run include'],'path':['QualityCriteria/IncludeRun']},
+	'ExcludeRun':{'pattern':['run exclude'],'path':['QualityCriteria/ExcludeRun']},
 	'GREEN_Lower':{'pattern':['green min','green low'],'path':['ValueAlert/Limit[GREEN]/Lower']},
 	'GREEN_Upper' :{'pattern':['green max','green up','green high'],'path':['ValueAlert/Limit[GREEN]/Upper']},
 	'YELLOW_Lower':{'pattern':['yellow min','yellow " low"'],'path':['ValueAlert/Limit[YELLOW]/Lower']},
@@ -34,18 +34,28 @@ pattern_parameter = {
 	'VALID_Upper':{'pattern':['valid max','valid up'],'path':['InvalidValueRemoval/Upper']},
 }
 
-def isvalidkanumber(kanumber):
-	if re.match("^[0-9]{3}-[A-Z]{3}-[0-9]-[0-9]{4}-[0-9]{4}$",kanumber):
+def isvalidknumber(knumber):
+	if re.match("^[0-9]{3}-[A-Z]{3}-[0-9]-[0-9]{4}-[0-9]{4}$",knumber):
 		return True
 	else:
 		return False
 
+def skip_comment(dqfile):
+	rowid_comment = dqfile[dqfile.iloc[:,0].str.contains('^#') == True].index
+	dqfile.drop(rowid_comment , inplace=True)
+	dqfile.reset_index(drop=True, inplace=True)
+
+def get_quality_criteria(dqfile, rowindex, column_name):
+	startrow = rowindex + 1	
+	criteria_block = dqfile.iloc[startrow:len(dqfile),:].copy()
+	criteria_block.columns = column_name
+	return criteria_block.to_dict(orient='record')
 
 def createProcessor(criteria, validdate):
 	quality_criteria = {}
-	#quality_criteria[i]["Name"] = period_name
 	quality_criteria["QualityCriteria"] = {}
 	quality_criteria["QualityCriteria"]["ValidFrom"] = validdate
+	quality_criteria["QualityCriteria"]["Name"] = period_name
 	for parname in criteria:
 		if pd.isnull(ientry[parname]):
 			continue 
@@ -110,41 +120,35 @@ if __name__ == '__main__':
 	dqfile = pd.read_excel(args.file)
 	
 	#Skip rows marked as comments
-	indexComment = dqfile[dqfile.iloc[:,0].str.contains('^#') == True].index
-	dqfile.drop(indexComment , inplace=True)
-	dqfile.reset_index(drop=True, inplace=True)
+	skip_comment(dqfile)
 
-	#Read validity date and entry date
-	date_rowid = dqfile.apply(lambda x:x.str.contains("date",case=False)).any(axis=1).idxmax()
-	valid_dates = [date for date in  dqfile.iloc[date_rowid,:] if isinstance(date, datetime)]
-	valid_date = (valid_dates[0] if len(valid_dates) > 0 else datetime.utcnow()).strftime("%Y-%m-%d") 
+	#Read validity date
+	rowid_date = dqfile.apply(lambda x:x.str.contains("date",case=False)).any(axis=1).idxmax()
+	listofdates = [date for date in  dqfile.iloc[rowid_date,:] if isinstance(date, datetime)]
+	valid_date = (listofdates[0] if len(listofdates) > 0 else datetime.utcnow()).strftime("%Y-%m-%d") 
 	print(valid_date)
-	#entry_date = 
 
 	#Read the names of parameters	
-	kanumber_rowid = dqfile.apply(lambda x:x.str.contains("katrin number",case=False)).any(axis=1).idxmax()
-	if not kanumber_rowid:
+	rowid_knumber = dqfile.apply(lambda x:x.str.contains("katrin number",case=False)).any(axis=1).idxmax()
+	if not rowid_knumber:
 		sys.exit("Input error: No row containing column names is found. Check your xlsx file. The row should start with 'KATRIN number'.")
-	paratype_names = to_standard_colname(dqfile.iloc[kanumber_rowid,:].tolist(), pattern_parameter)
+	para_types = to_standard_colname(dqfile.iloc[rowid_knumber,:].tolist(), pattern_parameter)
 
 	#Read the data and convert the dataframe into a list of dictionaries
-	data_startrow = kanumber_rowid + 1	
-	criteria_block = dqfile.iloc[data_startrow:len(dqfile),:].copy()
-	criteria_block.columns = paratype_names 
-	data_entries = criteria_block.to_dict(orient='record')
+	data_entries = get_quality_criteria(dqfile, rowid_knumber, para_types)	
 
 	for ientry in data_entries:
 		k_number = ientry['Katrin Number']
-		if isvalidkanumber(k_number):
+		if isvalidknumber(k_number):
 			quality_criteria = createProcessor(ientry, valid_date)
 			if not args.dry_run:
-				outputfile = open("QualityCriteria.json","w")
+				outputfile = open("temp-QualityCriteria.json","w")
 				outputfile.write(json.dumps(quality_criteria))
 				outputfile.close()
 				inifile = open(k_number+".ini", "w")
 				subprocess.run(["ktf-treedump", "--format=ini", outputfile.name], stdout=inifile)
-				CMD = "awk '{if (/=/) print $0\";\"; else print $0}' " + inifile.name + " > temp.ini; mv temp.ini " + inifile.name
-				subprocess.run(CMD, shell=True) 
+		#		CMD = "awk '{if (/=/) print $0\";\"; else print $0}' " + inifile.name + " > temp.ini; mv temp.ini " + inifile.name
+			#		subprocess.run(CMD, shell=True) 
 			else:
 				print(json.dumps(quality_criteria))
 		else:

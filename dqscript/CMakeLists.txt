@@ -3,6 +3,9 @@ cmake_minimum_required( VERSION 2.6 )
 set(VTK_DIR "/Users/mengleis/CoreCode/VTK/build")
 set(CMAKE_CXX_FLAGS "-std=c++11")
 
+find_package(GSL)
+
+
 find_package(VTK)
 if(VTK_FOUND)
     include(${VTK_USE_FILE})
@@ -24,7 +27,11 @@ include_directories(
 
 set(TABREE_BINS
   db-read
+  test-criteria  
+  timeseries-direct-adei
 )
+
+set( GSL_LIB /usr/local/Cellar/gsl/2.6/lib)
 
 foreach(TABREE_TARGET ${TABREE_BINS})
   add_executable(${TABREE_TARGET} ${TABREE_TARGET}.cxx)

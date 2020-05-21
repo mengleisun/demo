@@ -11,9 +11,11 @@ import subprocess
 period_name = "KNM2"
 
 alert_level = {
-	'GREEN':1,
-	'YELLOW':2,
+	'GREEN':1000,
+	'YELLOW':2000,
 }
+
+keyorder = ['Katrin Number', 'Description', 'CriteriaName', 'IncludeRun', 'ExcludeRun', 'Dependence', 'VALID_Lower', 'VALID_Upper', 'WindowLength', 'GREEN_Lower', 'GREEN_Upper', 'YELLOW_Lower', 'YELLOW_Upper', 'Hysteresis', 'GREEN_Grace', 'GREEN_Length', 'YELLOW_Length','UNKNOWN0']
 
 pattern_parameter = {
 	'Katrin Number':{'pattern':['katrin number','katrin #'],'path':['QualityCriteria/KatrinNumber','SlowControlReadout/KatrinNumber']},
@@ -21,21 +23,22 @@ pattern_parameter = {
 	'CriteriaName':{'pattern':['criteria'],'path':['QualityCriteria/CriteriaName']},
 	'IncludeRun':{'pattern':['run include'],'path':['QualityCriteria/IncludeRun']},
 	'ExcludeRun':{'pattern':['run exclude'],'path':['QualityCriteria/ExcludeRun']},
-	'GREEN_Lower':{'pattern':['green min','green low'],'path':['ValueAlert/Limit[GREEN]/Lower']},
-	'GREEN_Upper' :{'pattern':['green max','green up','green high'],'path':['ValueAlert/Limit[GREEN]/Upper']},
-	'YELLOW_Lower':{'pattern':['yellow min','yellow " low"'],'path':['ValueAlert/Limit[YELLOW]/Lower']},
-	'YELLOW_Upper':{'pattern':['yellow max','yellow up','yellow high'],'path':['ValueAlert/Limit[YELLOW]/Upper']},
-	'Hysteresis':{'pattern':['hysteresis'],'path':["ValueAlert/Limit[GREEN]/Hysteresis","ValueAlert/Limit[YELLOW]/Hysteresis"]},
+	'VALID_Lower':{'pattern':['valid min','valid reading min','valid low'],'path':['ValidValueSelection/ValidRange/Lower']},
+	'VALID_Upper':{'pattern':['valid max','valid reading max','valid up'],'path':['ValidValueSelection/ValidRange/Upper']},
+	'GREEN_Lower':{'pattern':['green min','green low'],'path':['ValueAlert/Limit<GREEN>/Lower']},
+	'GREEN_Upper' :{'pattern':['green max','green up','green high'],'path':['ValueAlert/Limit<GREEN>/Upper']},
+	'YELLOW_Lower':{'pattern':['yellow min','yellow " low"'],'path':['ValueAlert/Limit<YELLOW>/Lower']},
+	'YELLOW_Upper':{'pattern':['yellow max','yellow up','yellow high'],'path':['ValueAlert/Limit<YELLOW>/Upper']},
+	'Hysteresis':{'pattern':['hysteresis'],'path':["ValueAlert/Limit<GREEN>/Hysteresis","ValueAlert/Limit<YELLOW>/Hysteresis"]},
+        'GREEN_Grace':{'pattern':['grace'], 'path':['GracePeriod/GraceLength', 'GracePeriod/GraceLevel']},
 	'Dependence':{'pattern':['depend'],'path':['Dependence']},
-	'WindowLength':{'pattern':['averag time','averag length','mov averag'],'path':['MovingAverage/Length']},
-	'GREEN_Length':{'pattern':['gap green'],'path':['GapAlert']},
-	'YELLOW_Length':{'pattern':['gap yellow'],'path':['GapAlert']},
-	'VALID_Lower':{'pattern':['valid min','valid reading min','valid low'],'path':['InvalidValueRemoval/Lower']},
-	'VALID_Upper':{'pattern':['valid max','valid up'],'path':['InvalidValueRemoval/Upper']},
+	'WindowLength':{'pattern':['averag time','averag length','mov averag'],'path':['MovingAverage/WindowLength']},
+	'GREEN_Length':{'pattern':['gap green'],'path':['GapAtBoundaryAlert/Limit<GREEN>/Length', 'GapInMiddleAlert/Limit<GREEN>/Length']},
+	'YELLOW_Length':{'pattern':['gap yellow'],'path':['GapAtBoundaryAlert/Limit<YELLOW>/Length', 'GapInMiddleAlert/Limit<YELLOW>/Length']},
 }
 
 def isvalidknumber(knumber):
-	if re.match("^[0-9]{3}-[A-Z]{3}-[0-9]-[0-9]{4}-[0-9]{4}$",knumber):
+	if re.match("^[0-9]{3}-[A-Z0-9]{3}-[0-9]-[0-9]{4}-[0-9]{4}$",knumber):
 		return True
 	else:
 		return False
@@ -51,7 +54,8 @@ def get_quality_criteria(dqfile, rowindex, column_name):
 	criteria_block.columns = column_name
 	return criteria_block.to_dict(orient='record')
 
-def createProcessor(criteria, validdate):
+def createProcessor(rawcriteria, validdate):
+	criteria = {key:value for key,value in sorted(rawcriteria.items(), key=lambda i:keyorder.index(i[0]))}
 	quality_criteria = {}
 	quality_criteria["QualityCriteria"] = {}
 	quality_criteria["QualityCriteria"]["ValidFrom"] = validdate
@@ -66,9 +70,9 @@ def createProcessor(criteria, validdate):
 			parpath = ipath.split("/")
 			currentlayer = quality_criteria;
 			for key_name in parpath[:-1]:
-				if "[" in key_name and "]" in key_name:
-					color_name = re.search('\[([^]]+)',key_name).group(1)
-					key_name = key_name.split("[")[0] 
+				if "<" in key_name and ">" in key_name:
+					color_name = re.search('<([^>]+)',key_name).group(1)
+					key_name = key_name.split("<")[0] 
 					if key_name not in currentlayer:
 						currentlayer[key_name] = []
 					currentlayer = currentlayer[key_name]
@@ -86,8 +90,20 @@ def createProcessor(criteria, validdate):
 					if key_name not in currentlayer:
 						currentlayer[key_name] = {}
 					currentlayer = currentlayer[key_name]
-			if(isinstance(currentlayer, dict)):			
-				currentlayer[parpath[-1]] = ientry[parname]
+			if(isinstance(currentlayer, dict)):		
+				if "GraceLevel" in ipath:
+					currentlayer[parpath[-1]] = 0
+				if "IncludeRun" in ipath or "ExcludeRun" in ipath:
+					run_list = ''.join('"[' +x+ ']"' for x in ientry[parname].split(','))
+					currentlayer[parpath[-1]] = run_list
+					print(parpath[-1], run_list) 
+				else:
+					currentlayer[parpath[-1]] = ientry[parname]
+	if "ValueAlert" in quality_criteria and len(quality_criteria["ValueAlert"]["Limit"]) == 1:
+		quality_criteria["ValueAlert"]["Limit"][0]["AlertLevel"] = alert_level["YELLOW"]
+	if "GapAtBoundaryAlert" in quality_criteria and len(quality_criteria["GapAtBoundaryAlert"]["Limit"]) == 1:
+		quality_criteria["GapAtBoundaryAlert"]["Limit"][0]["AlertLevel"] = alert_level["YELLOW"]
+		quality_criteria["GapInMiddleAlert"]["Limit"][0]["AlertLevel"] = alert_level["YELLOW"]   
 	return quality_criteria
 			 
 def to_standard_colname(lst, pattern_map):
@@ -150,6 +166,8 @@ if __name__ == '__main__':
 		#		CMD = "awk '{if (/=/) print $0\";\"; else print $0}' " + inifile.name + " > temp.ini; mv temp.ini " + inifile.name
 			#		subprocess.run(CMD, shell=True) 
 			else:
-				print(json.dumps(quality_criteria))
+				#json_criteria = json.dumps(quality_criteria)
+				#print(json_criteria)
+				print(quality_criteria["QualityCriteria"]["KatrinNumber"])
 		else:
 			print("The KATRIN number " + k_number + " is not valid.")

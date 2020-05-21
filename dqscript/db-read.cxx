@@ -28,26 +28,26 @@
 #include "TLine.h"
 
 KLOGGER("kali.applications");
-#define THRESHOLD 0.5
+#define THRESHOLD 500
 
 using namespace std;
 using namespace katrin;
 
 const int N_SUBSYSTEM = 6;
 std::map<string,string> KATRINNAME = {
-    {"default","UndefinedSystem/"},
-    {"1XX", "REAR_SYSTEM/"},
-    {"2XX", "WGTS/"},
-    {"3XX", "Transport_System/"},
-      {"31X","Transport_System/DPS2-F/"},
-      {"32X","Transport_System/CPS/"},
-        {"322","Transport_System/CPS/FBM/"},
-    {"4XX", "Spectrometer/"},
-        {"41X","Spectrometer/PS/"},
-        {"43X","Spectrometer/MS/"},
-        {"44X","Spectrometer/MonitorSpectrometer/"},
-    {"5XX", "FPD/"},
-    {"6XX", "LOOP/"}
+	{"default","UndefinedSystem/"},
+	{"1XX", "REAR_SYSTEM/"},
+	{"2XX", "WGTS/"},
+	{"3XX", "Transport_System/"},
+ 		{"31X","Transport_System/DPS2-F/"},
+		{"32X","Transport_System/CPS/"},
+		{"322","Transport_System/CPS/FBM/"},
+	{"4XX", "Spectrometer/"},
+		{"41X","Spectrometer/PS/"},
+		{"43X","Spectrometer/MS/"},
+		{"44X","Spectrometer/MonitorSpectrometer/"},
+	{"5XX", "FPD/"},
+	{"6XX", "LOOP/"},
 };
 
 string getDirName(string katrin_number){
@@ -76,13 +76,13 @@ int getCriteria(string runNumber, string configName){
 
 	KTreeFormat* fFormat = new KInifileTreeFormat();
 	stringstream inputstream;
-
+	
 	// Create your instance of a DataManager
 	KLDataManager dataManager;
 	
 	vector<string> knumberlist;
 	knumberlist.push_back("521-RPY-0-1240-0001");
-
+	
 	vector<KLKatrinNumber> sensorList;
 	for(const string entry: knumberlist){
 		KLKatrinNumber sensor(entry);
@@ -103,30 +103,32 @@ int getCriteria(string runNumber, string configName){
 	KLTimeStamp now = KLTimeStamp::Now();
 	KLTimeStamp minTime = KLTimeStamp::Max();
 	KLTimeStamp maxTime = KLTimeStamp::Min();
-
-	KLRunId runIdentifier(runNumber);
-	if (runIdentifier.IsValid()) {
-		KLRun* run = dataManager.GetRun(runIdentifier);
+	
+	KLRunId runIDentifier(runNumber);
+	if (runIDentifier.IsValid()) {
+		KLRun* run = dataManager.GetRun(runIDentifier);
 		KLTimeStamp runStart = run->GetTimeInterval().GetStart();
 		KLTimeStamp runEnd = run->GetTimeInterval().GetEnd();
 	
-		if ((minTime == now) || (runStart < minTime))
-		minTime = runStart;
-		if ((maxTime == now) || (runEnd > maxTime))
-		maxTime = runEnd;
-		std::cout << "min " << minTime << " max " << maxTime << std::endl;
+		if ((minTime == now) || (runStart < minTime)){
+			minTime = runStart;
+		}
+		if ((maxTime == now) || (runEnd > maxTime)){
+			maxTime = runEnd;
+		}
 	}
-	if (minTime >= maxTime)
-	    maxTime = minTime = now;
+	if (minTime >= maxTime){
+		maxTime = minTime = now;
+	}
 	KLTimeInterval timeInterval( minTime, maxTime );
-	
+
 	// Create a filter for our database query:
 	KLDatabaseFilter dbFilter;
 	dbFilter.SetKatrinNumberList( sensorList );
 	dbFilter.SetOnlyMostRecentEntry(true);
 	dbFilter.SetKatrinNumbersConsiderSubType(false);
 	dbFilter.SetValidityInterval( timeInterval );
-
+	
 	// Request database items
 	KLKatrinNumberList knData = dataManager.GetKatrinNumberList(dbFilter);
 	
@@ -134,7 +136,7 @@ int getCriteria(string runNumber, string configName){
 		KERROR("Found 0 entry in the database.");
 	}
 	else {
-	    KINFO("Found " << knData.size() << " matching Katrin numbers:");
+		KINFO("Found " << knData.size() << " matching Katrin numbers:");
 	}
 	
 	// Create a filter for our quality criteria query:
@@ -144,41 +146,44 @@ int getCriteria(string runNumber, string configName){
 	KLQualityCriteriaList qcData = dataManager.GetQualityCriteriaList( qcFilter );
 	
 	if (qcData.size() == 0) {
-	    KERROR("Failed to look up QualityCriteria entries!");
-	    return -1;
+		KERROR("Failed to look up QualityCriteria entries!");
+		return -1;
 	}
 	
 	ofstream configfile;
 	configfile.open(configName);
 	if(configfile.is_open()){
-	KTree outputTree;
-	for (const KLQualityCriteria* entry : qcData ) {
-	    inputstream.str("");
-	    inputstream << entry->GetCriteria() << endl;
-		std::cout << entry->GetKatrinNumber() << std::endl;
-		std::cout <<  entry->GetCriteriaName() << std::endl;
-	
-	    istringstream ss(inputstream.str());
-	    KTree tree;
-	    fFormat->Read(tree, ss);
-	    vector<KTree*> valuelist = tree.ChildNodeList();
+		KTree outputTree;
+		for (const KLQualityCriteria* entry : qcData ) {
+			inputstream.str("");
+			inputstream << entry->GetCriteria() << endl;
+			stringstream criteriaName;
+			criteriaName.str("");
+			criteriaName << entry->GetKatrinNumber();
+			if(!(entry->GetCriteriaName()).empty())criteriaName << "-" << entry->GetCriteriaName();
 
-	    KTree& currentNode = outputTree.AppendNode("QualityAnalysis");
-	    for(unsigned i(0); i < valuelist.size(); i++){
-		KTree& tmptree = currentNode["TimeSeriesProcessingChain"].AppendNode("Processor");
-		tmptree["Type"] = valuelist[i]->NodeName(); 
-		tmptree["Parameter"] = *(valuelist[i]);	
-	    }
-	}
-	KKtfTreeSerializer(configfile).Serialize(outputTree["/"]);
+			istringstream ss(inputstream.str());
+			KTree tree;
+			fFormat->Read(tree, ss);
+			vector<KTree*> valuelist = tree.ChildNodeList();
+	
+			KTree& currentNode = outputTree.AppendNode("QualityAnalysis");
+			currentNode["Name"] = criteriaName.str();
+			for(unsigned i(0); i < valuelist.size(); i++){
+				KTree& tmptree = currentNode["TimeSeriesProcessingChain"].AppendNode("Processor");
+				tmptree["Type"] = valuelist[i]->NodeName(); 
+				tmptree["Parameter"] = *(valuelist[i]);	
+			}
+		}
+		KKtfTreeSerializer(configfile).Serialize(outputTree["/"]);
 		
-	return 1;
+		return 1;
 	}
 	else{
 		std::cout << "Error opening file";
 		return -1;
 	}
-
+	
 	return 0;
 }	
 
@@ -187,18 +192,17 @@ int main(int argc, char** argv)
 	KArgumentList args(argc, argv);
 	string criteriaFilePath = args["--criteria-file-path"].Or("tmp/Data");	
 	string outputFilePath = args["--output-file-path"].Or(".");
-	string outputSuffix = args["--output-suffix"].Or(args[0]);
+	string runID = args["--runID"].Or(args[0]);
 
 	ostringstream qasum;
 	qasum.str("");
 	ostringstream qaplot;
 	qaplot.str("");
-	string runId = outputSuffix;
-	qasum  << outputFilePath + "/QualityEvaluation-" << outputSuffix << ".json";
-	qaplot << outputFilePath + "/DQM_" << outputSuffix << ".root";
+	qasum  << outputFilePath + "/QualityEvaluation-" << runID << ".json";
+	qaplot << outputFilePath + "/DQM_" << runID << ".root";
     
-	string qafilename = criteriaFilePath + "/QualityCriteria-1_KNM1.ktf";
-	if(!getCriteria(runId, qafilename)){
+	string qafilename = criteriaFilePath + "/QualityCriteria_KNM2.ktf";
+	if(!getCriteria(runID, qafilename)){
 		cout << "Failed to get Criteria from database" << endl;
 		return -1;
 	}
@@ -237,7 +241,6 @@ int main(int argc, char** argv)
 
 	for(auto& name:histnamelist){
 		auto* ts = beans.FindTimeSeries(name);
-		std::cout << name << std::endl;
 		if(name.find("Input") != std::string::npos)continue;
 		bool isReadoutGraph = (name.find("Readout") != std::string::npos);
 		string dirname = getDirName(name);
@@ -269,6 +272,9 @@ int main(int argc, char** argv)
 		}
 		g->Write();
 	}
+	file->Write();
+	file->Close();
+
 
 	TCanvas *can = new TCanvas("Sub_system Quality","Sub_system Quality",1200,1800);
 	can->Divide(2,3);
@@ -301,7 +307,7 @@ int main(int argc, char** argv)
 		dummy[isys]->GetYaxis()->SetBinLabel(1,"GOOD");
 		dummy[isys]->GetYaxis()->SetBinLabel(2,"Bad");
 		dummy[isys]->Draw();
-		if(np >= 1){
+		if(np > 1){
 			summary_good[isys]->SetMarkerColor(kGreen);
 			summary_bad[isys]->SetMarkerColor(kRed);
 			summary_good[isys]->SetMarkerStyle(20);
@@ -311,7 +317,7 @@ int main(int argc, char** argv)
 		} 
 	} 
 
-	can->SaveAs((outputFilePath + "/" + "QualityEvaluation00" + "-" + outputSuffix + ".png").c_str());
+	can->SaveAs((outputFilePath + "/" + "QualityEvaluation-SubSystem" + "-" + runID + ".png").c_str());
 
 	TCanvas *can_all = new TCanvas("Quality Summary","Quality Summary",600,600);
 	can_all->cd();
@@ -337,10 +343,7 @@ int main(int argc, char** argv)
 	dummy_all->Draw();
 	g_all->SetLineWidth(2);
 	g_all->Draw("same");
-	can_all->SaveAs((outputFilePath + "/" + "QualityEvaluation01" + "-" + outputSuffix + ".png").c_str());
-	
-	file->Write();
-	file->Close();
+	can_all->SaveAs((outputFilePath + "/" + "QualityEvaluation-Summary" + "-" + runID + ".png").c_str());
 	
 	return 0;
 }

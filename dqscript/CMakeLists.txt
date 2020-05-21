@@ -28,7 +28,7 @@ include_directories(
 set(TABREE_BINS
   db-read
   test-criteria  
-  timeseries-direct-adei
+  check-DB
 )
 
 set( GSL_LIB /usr/local/Cellar/gsl/2.6/lib)
